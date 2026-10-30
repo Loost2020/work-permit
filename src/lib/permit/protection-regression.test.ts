@@ -1,0 +1,18 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {analyze, EMPTY_JOB} from './analyze.ts';
+const run=(work:string,tools='hand tools')=>analyze({...EMPTY_JOB,work,tools});
+const codes=(r:ReturnType<typeof run>)=>r.permits.filter(p=>p.required).map(p=>p.code).sort();
+test('plain drill adds hot without dropping hand-tool work',()=>{const r=run('Repair support','drill, hand tools');assert.deepEqual(codes(r),['cold','hot']);assert.equal(r.sections.fireWatch.on,true);assert.equal(r.sections.B.find(f=>f.id==='electrical')?.on,true)});
+test('numeric height requires fall protection and matching checklist',()=>{const r=run('Paint at 3 m','brush');assert.equal(r.sections.E.find(f=>f.id==='fall')?.on,true);assert.equal(r.checklist.find(q=>q.id==='q8')?.suggest,'Y')});
+test('Arabic clean tank entry',()=>{const r=run('دخول خزان نظيف','أدوات يدوية');assert.deepEqual(codes(r),['cold','cse']);assert.equal(r.gas.required,true);assert.equal(r.sections.standby.on,true)});
+test('English clean tank entry',()=>assert.deepEqual(codes(run('Enter a clean tank')),['cold','cse']));
+test('deep excavation needs confined permit',()=>assert.equal(codes(run('Manual excavation of trench 2 m deep')).includes('cse'),true));
+test('Arabic numeric height',()=>assert.equal(run('دهان على ارتفاع ٣ م','فرشاة').sections.E.find(f=>f.id==='fall')?.on,true));
+test('1.2m excavation does not exceed threshold',()=>assert.equal(codes(run('Manual excavation of trench 1.2 m deep')).includes('cse'),false));
+test('width must not become height or depth',()=>{const r=run('Manual excavation of trench 3 m wide');assert.equal(codes(r).includes('cse'),false);assert.equal(r.sections.E.find(f=>f.id==='fall')?.on,false)});
+test('confined entry attaches blind list',()=>assert.equal(run('Enter confined clean tank').sections.A.find(f=>f.id==='blindList')?.on,true));
+test('hand tools and welding retain cold',()=>assert.deepEqual(codes(run('Weld support','welding machine, hand tools')),['cold','hot']));
+test('laptop hand tools remain hot only',()=>assert.deepEqual(codes(run('Configure rack room','laptop, hand tools')),['hot']));
+test('pond remains green and hot',()=>assert.deepEqual(codes(run('Re-entry into evaporation pond')),['cse','hot']));
+test('line break with sparks has no periodic checkbox or contradictory frequency',()=>{const r=run('Open flange on gas line and weld','welding machine, hand tools');assert.equal(r.gas.periodic,false);assert.equal(r.gas.readings,'break');assert.doesNotMatch(r.gas.frequency,/periodically/)});

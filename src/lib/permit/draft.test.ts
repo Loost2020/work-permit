@@ -1,0 +1,12 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {blank,parseDraft} from './draft.ts';
+import {englishDraft} from './language.ts';
+import {analyze,EMPTY_JOB} from './analyze.ts';
+import {effectiveGas} from './review.ts';
+test('draft round-trip preserves manual corrections and STOP',()=>{const draft=blank();draft.job.work='Weld';draft.flags['hot|E:fall']=false;draft.checks['hot|q8']='N';draft.notes.hot='Review rescue';draft.picked='hot';assert.deepEqual(parseDraft(JSON.parse(JSON.stringify(draft))),draft)});
+test('invalid draft is rejected',()=>{assert.throws(()=>parseDraft({job:{work:[],tools:'x'}}));assert.throws(()=>parseDraft(null))});
+test('unknown force values cannot affect rules',()=>{const draft=blank();assert.deepEqual(parseDraft({...draft,job:{...draft.job,forces:{hot:'wrong',cold:'on',unknown:'off'}}}).job.forces,{cold:'on'})});
+test('Arabic task terms produce English draft',()=>{const result=englishDraft('دخول خزان نظيف');assert.match(result.text,/enter tank clean/);assert.doesNotMatch(result.text,/[\u0600-\u06ff]/)});
+test('unknown Arabic wording is marked for review',()=>assert.equal(englishDraft('اختبار كلمةغيرمعروفة').needsReview,true));
+test('gas deselection cannot leave periodic Yes',()=>{const r=analyze({...EMPTY_JOB,work:'Weld gas line',tools:'welding machine'});assert.equal(effectiveGas(r,{'gas:required':false,'gas:periodic':true}).periodic,false)});

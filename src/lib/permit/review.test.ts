@@ -1,0 +1,11 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {analyze,EMPTY_JOB} from './analyze.ts';
+import {buildSummary,removedControls,scoped,sheetAnalysis} from './review.ts';
+const job={...EMPTY_JOB,work:'Open gas line flange, welding, confined entry and scaffold',tools:'welding machine, hand tools'};
+test('line and entry keep distinct gas plans',()=>{const r=analyze(job);const line=sheetAnalysis(r,'line'),entry=sheetAnalysis(r,'cse');assert.equal(line.gas.readings,'break');assert.equal(line.gas.periodic,false);assert.equal(entry.gas.readings,'shift');assert.equal(entry.gas.periodic,true);assert.match(entry.gas.frequency,/2 hours/)});
+test('manual controls and N answers are included in handover',()=>{const r=analyze(job);const summary=buildSummary(job,r,{'hot|E:fall':false},{'hot|q8':'N'},{hot:'Rescue team confirmed'});assert.match(summary,/STOP — 1 unresolved/);assert.match(summary,/8\. N —/);assert.match(summary,/Suggested controls removed manually: Fall protection/);assert.match(summary,/Rescue team confirmed/)});
+test('control corrections remain independent by form',()=>{const flags={'hot|E:fall':false,'cold|E:fall':true};assert.deepEqual(scoped(flags,'hot'),{'E:fall':false});assert.deepEqual(scoped(flags,'cold'),{'E:fall':true});assert.equal(removedControls(analyze(job),scoped(flags,'hot')).includes('Fall protection'),true)});
+test('gas removed manually is identified',()=>assert.equal(removedControls(analyze(job),{'gas:required':false}).includes('Gas testing required'),true));
+test('hydrocarbon leak does not trigger water isolation',()=>{const r=analyze({...EMPTY_JOB,work:'تسريب زيت',tools:'أدوات يدوية'});assert.equal(r.sections.C.find(f=>f.id==='single')?.on,false)});
+test('SIMOPS depends on simultaneous work',()=>{const r=analyze({...EMPTY_JOB,work:'Repair support with simultaneous operations',tools:'hand tools'});assert.equal(r.checklist.find(q=>q.id==='q18')?.suggest,'Y')});

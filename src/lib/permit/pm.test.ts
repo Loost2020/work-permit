@@ -1,0 +1,14 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {analyze,EMPTY_JOB} from './analyze.ts';
+const run=(work:string,tools='Instrument devices',location='Air compressor',plant='')=>analyze({...EMPTY_JOB,work,tools,location,plant});
+const codes=(r:ReturnType<typeof run>)=>r.permits.filter(p=>p.required).map(p=>p.code).sort();
+test('PM check on local transmitter is cold without automatic JSA',()=>{const r=run('PM check on local transmitter');assert.deepEqual(codes(r),['cold']);assert.equal(r.sections.A.find(f=>f.id==='jsa')?.on,false);assert.equal(r.ready,true)});
+test('compressor location alone does not select mechanical blocking or breaker',()=>{const r=run('PM check on local transmitter');assert.equal(r.sections.C.find(f=>f.id==='mechanical')?.on,false);assert.equal(r.sections.C.find(f=>f.id==='locked')?.on,false);assert.equal(r.sections.B.find(f=>f.id==='mechanical')?.on,false);assert.equal(r.sections.B.find(f=>f.id==='electrical')?.on,false)});
+test('PM inside CPF retains site PPE without implying H2S exposure',()=>{const r=run('PM check on local transmitter','Instrument devices','Air compressor','CPF');assert.equal(r.sections.E.find(f=>f.id==='frc')?.on,true);assert.equal(r.sections.E.find(f=>f.id==='h2sMonitor')?.on,true);assert.equal(r.sections.D.find(f=>f.id==='h2s')?.on,false);assert.equal(r.sections.fireWatch.on,false)});
+test('actual compressor maintenance still gets equipment isolation',()=>{const r=run('PM maintenance of compressor');assert.deepEqual(codes(r),['cold']);assert.equal(r.sections.C.find(f=>f.id==='locked')?.on,true);assert.equal(r.sections.C.find(f=>f.id==='mechanical')?.on,true)});
+test('PM does not suppress a laptop hot permit',()=>assert.deepEqual(codes(run('PM check local transmitter','laptop')),['hot']));
+test('PM with hand tools and grinder retains both permits',()=>assert.deepEqual(codes(run('PM check local transmitter','hand tools, grinder')),['cold','hot']));
+test('PM does not suppress confined entry or line break',()=>{assert.deepEqual(codes(run('PM check inside confined tank','hand tools')),['cold','cse']);assert.deepEqual(codes(run('PM check requiring opening flange','hand tools')),['cold','line'])});
+test('electrical-panel location does not imply arc work',()=>{const r=run('PM check local transmitter','instrument devices','MCC switchgear');assert.equal(r.sections.E.find(f=>f.id==='arc')?.on,false);assert.equal(r.sections.C.find(f=>f.id==='locked')?.on,false)});
+test('Arabic preventive inspection is cold',()=>assert.deepEqual(codes(run('فحص دوري للترانسميتر')),['cold']));
